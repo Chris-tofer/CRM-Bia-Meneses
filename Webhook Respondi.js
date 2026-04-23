@@ -247,7 +247,17 @@ function doPost(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const finalSource = validarContraLista_(ss, map.source_default || pickFirst_(payload, ['source', 'origem']) || 'Formulário', 'Origem_Lead', 'Formulário');
     const finalFunnel = validarContraLista_(ss, map.funnel_default || formName, 'Funis_Entrada', '');
-    const finalStatus = 'Novo Lead - Formulário';
+
+    // === TRATAMENTO DE ESTADO: Recuperação vs Completo ===
+    const respStatus = String(payload?.respondent?.status || '').toLowerCase();
+    const isRecuperacao = (respStatus === 'incomplete' || respStatus === 'recovered' || respStatus === 'abandoned');
+
+    // Rótulo explícito para a operação
+    const statusLabel = isRecuperacao ? 'Recuperação - Formulário Abandonado' : 'Novo Lead - Formulário';
+
+    // Validação contra a aba CONFIG
+    const finalStatus = validarContraLista_(ss, statusLabel, 'Status_Funil', 'Novo Lead - Formulário');
+
     const rawId = Utilities.getUuid();
 
     // === Interesse dinâmico por funil ===
@@ -283,23 +293,23 @@ function doPost(e) {
     ]);
 
     // 2) CRM só se tiver contato (dedupe por respondent_id dentro de inserirNoCrmGeral_)
-const insertedCrm = hasContact ? inserirNoCrmGeral_(ss, {
-  leadKey,
-  rawId,
-  respondentId: String(payload?.respondent?.respondent_id || ''),
-  finalName,
-  finalInstagram,
-  leadWhatsapp,
-  leadEmail,
-  notes: finalNotes,
-  source: finalSource,
-  funnel: finalFunnel,
-  interest: crmInterest,
-  status: finalStatus,
-  receivedAt
-}) : false;
+    const insertedCrm = hasContact ? inserirNoCrmGeral_(ss, {
+      leadKey,
+      rawId,
+      respondentId: String(payload?.respondent?.respondent_id || ''),
+      finalName,
+      finalInstagram,
+      leadWhatsapp,
+      leadEmail,
+      notes: finalNotes,
+      source: finalSource,
+      funnel: finalFunnel,
+      interest: crmInterest,
+      status: finalStatus,
+      receivedAt
+    }) : false;
 
-return json_(200, { ok: true, raw_id: rawId, inserted_crm: insertedCrm, flags });
+    return json_(200, { ok: true, raw_id: rawId, inserted_crm: insertedCrm, flags });
 
   } catch (err) {
     console.error("ERRO:", err);
@@ -621,21 +631,21 @@ function processHandles_(text) {
   // Fallback SEM "@": só considera handle se realmente "parecer" um user.
   // Evita transformar nomes simples (ex: "Gabriela") em @gabriela.
   if (normalized.length === 0) {
-  const s = str.trim();
-  if (s.length > 2 && !s.includes(' ')) {
-    const clean = s.replace(/^@+/, '').trim();
-    const hasDotOrUnderscore = /[._]/.test(clean);
-    const hasDigit = /\d/.test(clean);
-    const isAllLower = clean === clean.toLowerCase();
-    const isOnlyLetters = /^[A-Za-zÀ-ÿ]+$/.test(clean);
-    const looksLikeHandle = (hasDotOrUnderscore || hasDigit || isAllLower) && !(isOnlyLetters && !isAllLower);
+    const s = str.trim();
+    if (s.length > 2 && !s.includes(' ')) {
+      const clean = s.replace(/^@+/, '').trim();
+      const hasDotOrUnderscore = /[._]/.test(clean);
+      const hasDigit = /\d/.test(clean);
+      const isAllLower = clean === clean.toLowerCase();
+      const isOnlyLetters = /^[A-Za-zÀ-ÿ]+$/.test(clean);
+      const looksLikeHandle = (hasDotOrUnderscore || hasDigit || isAllLower) && !(isOnlyLetters && !isAllLower);
 
-    if (looksLikeHandle) {
-      normalized.push('@' + clean.toLowerCase());
-      matchesRaw.push(str);
+      if (looksLikeHandle) {
+        normalized.push('@' + clean.toLowerCase());
+        matchesRaw.push(str);
+      }
     }
   }
-}
 
   return { primary: normalized[0] || '', secondaries: normalized.slice(1), matchesRaw };
 }
