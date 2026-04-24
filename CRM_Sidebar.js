@@ -105,6 +105,33 @@ AMPLIAÇÃO DA BUSCA:
   .helpBody h3 { margin: 10px 0 6px 0; font-size: 13px; color:#1a1c1e; }
   .helpBody ul { margin: 6px 0 0 18px; padding: 0; }
   .helpBody li { margin: 4px 0; }
+  .helpBody li { margin: 4px 0; }
+
+  /* TOAST NOTIFICATION */
+  #toast {
+    visibility: hidden;
+    min-width: 250px;
+    background-color: #323232;
+    color: #fff;
+    text-align: center;
+    border-radius: 8px;
+    padding: 12px 16px;
+    position: fixed;
+    z-index: 10000;
+    left: 50%;
+    bottom: 30px;
+    transform: translateX(-50%);
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    opacity: 0;
+    transition: opacity 0.3s, bottom 0.3s;
+  }
+  #toast.show {
+    visibility: visible;
+    opacity: 1;
+    bottom: 40px;
+  }
 </style>
 </head>
 
@@ -187,6 +214,19 @@ AMPLIAÇÃO DA BUSCA:
 
     <div style="padding:15px">
       <div id="cfgForms">
+        <div style="margin-bottom: 15px;">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Formulários Cadastrados</span>
+            <button type="button" class="btnHist" onclick="loadAllForms()" title="Atualizar lista" style="padding:4px;">
+              <span class="material-icons" style="font-size:16px;">refresh</span>
+            </button>
+          </label>
+          <div id="allFormsList" style="max-height:160px; overflow-y:auto; border:1px solid #dadce0; border-radius:6px; background:#f8f9fa;">
+            <div style="padding:10px; font-size:12px; color:#5f6368; text-align:center;">Carregando...</div>
+          </div>
+        </div>
+        <hr style="border:0; border-top:1px solid #eee; margin: 15px 0">
+
         <label>Pesquisar ID ou NOME do Formulário</label>
         <div style="display:flex; gap:5px">
           <input type="text" id="cfgSearchId" placeholder="Ex: 7SQRLgDL ou Mentoria">
@@ -248,6 +288,9 @@ AMPLIAÇÃO DA BUSCA:
     </div>
     <div id="helpBody" class="helpBody"></div>
   </div>
+
+  <!-- TOAST -->
+  <div id="toast"></div>
 
 <script>
   let historyStack = [], historyIndex = -1, lastDetectedSheet = "", syncInterval = null, allLists = {};
@@ -457,6 +500,7 @@ AMPLIAÇÃO DA BUSCA:
   }
 
   function loadConfigData() {
+    loadAllForms();
     google.script.run.withSuccessHandler(lists => {
       allLists = lists;
       if(lists.Funis_Entrada) {
@@ -483,7 +527,37 @@ AMPLIAÇÃO DA BUSCA:
   function saveConfigList() {
     const listName = document.getElementById("cfgListSelector").value;
     const content = document.getElementById("cfgListTextArea").value;
-    google.script.run.withSuccessHandler(msg => alert(msg)).uiSaveConfigList(listName, content);
+    google.script.run.withSuccessHandler(msg => showToast(msg)).uiSaveConfigList(listName, content);
+  }
+
+  function loadAllForms() {
+    const container = document.getElementById("allFormsList");
+    if (!container) return;
+    container.innerHTML = `<div style="padding:10px; font-size:12px; color:#5f6368; text-align:center;">Carregando...</div>`;
+    
+    google.script.run.withSuccessHandler(forms => {
+      if (!forms || forms.length === 0) {
+        container.innerHTML = `<div style="padding:10px; font-size:12px; color:#5f6368; text-align:center;">Nenhum formulário cadastrado.</div>`;
+        return;
+      }
+      
+      container.innerHTML = forms.map(f => `
+        <div style="padding:8px 10px; border-bottom:1px solid #e0e0e0; display:flex; justify-content:space-between; align-items:center;">
+          <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:10px; width: 100%;">
+            <div style="font-size:12px; font-weight:700; color:#3c4043; overflow:hidden; text-overflow:ellipsis;">${f.form_name || '(Sem nome)'}</div>
+            <div style="font-size:10px; color:#5f6368; overflow:hidden; text-overflow:ellipsis;">ID: ${f.form_id || '(Sem ID)'}</div>
+          </div>
+          <button class="btnHist" onclick="editForm('${f.form_id}')" title="Editar" style="flex:none; padding: 4px;">
+            <span class="material-icons" style="font-size:16px;">edit</span>
+          </button>
+        </div>
+      `).join('');
+    }).uiGetAllForms();
+  }
+
+  function editForm(id) {
+    document.getElementById("cfgSearchId").value = id;
+    searchFormMapping();
   }
 
 function searchFormMapping() {
@@ -492,36 +566,49 @@ function searchFormMapping() {
 
     google.script.run.withSuccessHandler(results => {
       if (results && results.length > 0) {
-        let selectedForm = null;
-
         if (results.length === 1) {
-          // Se houver apenas um, confirma diretamente
-          if(confirm("Encontrado: " + results[0].form_name + "\n\nDeseja carregar os dados?")) {
-            selectedForm = results[0];
-          }
+          applyFormSelection(results[0]);
+          showToast("Formulário carregado: " + results[0].form_name);
         } else {
-          // Se houver vários, cria uma lista para escolha simples (prompt ou confirm expandido)
-          const names = results.map((r, i) => (i + 1) + ") " + r.form_name).join("\n");
-          const choice = prompt("Múltiplos formulários encontrados. Digite o número correspondente:\n\n" + names);
-          const index = parseInt(choice) - 1;
-          
-          if (results[index]) {
-            selectedForm = results[index];
-          }
-        }
-
-        if (selectedForm) {
-          document.getElementById("cfgFormId").value = selectedForm.form_id;
-          document.getElementById("cfgFormName").value = selectedForm.form_name;
-          document.getElementById("cfgFunnel").value = selectedForm.funnel_default;
-          document.getElementById("cfgInterest").value = selectedForm.interest_default;
+          showMultiSelectModal(results);
         }
       } else {
-        alert("Nenhum formulário encontrado com o termo: " + term);
-        // Se for um ID novo, mantém no campo de ID para cadastro
+        showToast("Nenhum formulário encontrado com o termo: " + term);
         document.getElementById("cfgFormId").value = term;
       }
     }).uiGetFormMapping(term);
+  }
+
+  function applyFormSelection(selectedForm) {
+    document.getElementById("cfgFormId").value = selectedForm.form_id;
+    document.getElementById("cfgFormName").value = selectedForm.form_name;
+    document.getElementById("cfgFunnel").value = selectedForm.funnel_default;
+    document.getElementById("cfgInterest").value = selectedForm.interest_default;
+  }
+
+  function showMultiSelectModal(results) {
+    const html = results.map((r, i) => `
+      <div style="padding:12px; border-bottom:1px solid #eee; cursor:pointer; display:flex; flex-direction:column; gap:4px; transition: background 0.2s;" onmouseover="this.style.backgroundColor='#f8f9fa'" onmouseout="this.style.backgroundColor='transparent'" onclick="selectFromModal(${i})">
+        <strong style="color:#1a1c1e; font-size:13px;">${r.form_name}</strong>
+        <span style="font-size:11px; color:#5f6368;">ID: ${r.form_id}</span>
+      </div>
+    `).join("");
+    
+    window._tempModalResults = results;
+
+    document.getElementById("helpTitle").textContent = "Múltiplos Encontrados (Selecione um)";
+    document.getElementById("helpBody").innerHTML = html;
+    document.getElementById("helpOverlay").style.display = "block";
+    document.getElementById("helpModal").style.display = "block";
+  }
+
+  function selectFromModal(index) {
+    const results = window._tempModalResults;
+    if (results && results[index]) {
+      applyFormSelection(results[index]);
+      showToast("Formulário carregado: " + results[index].form_name);
+    }
+    closeHelp();
   }
 
   function saveFormMapping() {
@@ -531,7 +618,16 @@ function searchFormMapping() {
       funnel_default: document.getElementById("cfgFunnel").value,
       interest_default: document.getElementById("cfgInterest").value
     };
-    google.script.run.withSuccessHandler(msg => alert(msg)).uiSaveFormMapping(data);
+    google.script.run.withSuccessHandler(msg => showToast(msg)).uiSaveFormMapping(data);
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById("toast");
+    toast.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(() => {
+      toast.classList.remove("show");
+    }, 3000);
   }
 
   // NAVEGAÇÃO E RENDERIZAÇÃO

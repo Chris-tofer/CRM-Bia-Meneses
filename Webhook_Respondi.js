@@ -1,5 +1,5 @@
 /**
- * Webhook Receiver for Respondi -> Google Sheets (VERSÃO 16.2.5)
+ * Webhook Receiver for Respondi -> Google Sheets (VERSÃO 16.2.6)
  * --------------------------------------------------------------
  * NOVO: CRM agora é preenchido por cabeçalhos (linha 2), não por número de coluna.
  * Patch no processHandles_ para evitar transformar “Gabriela” em “@Gabriela", por exemplo.
@@ -568,7 +568,11 @@ function loadFormMap_(fid, fname) {
   const data = sh.getDataRange().getValues(), h = data[0].map(s => String(s).trim()), idx = (c) => h.indexOf(c);
   for (let i = 1; i < data.length; i++) {
     const r = data[i];
-    if ((fid && String(r[idx('form_id')]).trim() === fid) || (!fid && String(r[idx('form_name')]).trim() === fname)) {
+    const cellFid = String(r[idx('form_id')]).trim();
+    // Verifica se o ID bate exatamente OU se a pessoa colou o link completo (ex: .../fYOc3VWj)
+    const isFidMatch = fid && (cellFid === fid || cellFid.includes('/' + fid));
+    
+    if (isFidMatch || (!fid && String(r[idx('form_name')]).trim() === fname)) {
       const g = k => (idx(k) >= 0 ? String(r[idx(k)]).trim() : '');
       return {
         funnel_default: g('funnel_default'),

@@ -264,6 +264,20 @@ function uiGetFormMapping(searchTerm) {
   }));
 }
 
+function uiGetAllForms() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName("MAPEAMENTO_FORMS");
+  if (!sh) return [];
+  
+  const data = sh.getDataRange().getValues();
+  const body = data.slice(1);
+  
+  return body.map(row => ({
+    form_id: row[0],
+    form_name: row[1]
+  })).filter(f => f.form_id || f.form_name);
+}
+
 function uiSaveFormMapping(formData) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName("MAPEAMENTO_FORMS");
